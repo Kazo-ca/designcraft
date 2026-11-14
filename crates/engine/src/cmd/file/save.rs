@@ -81,7 +81,14 @@ pub(super) fn file_save_a_copy(s: &mut Session, p: &Value) -> Result<Value> {
     let bytes = to_bytes_with_preview(&copy, &s.cache)?;
     #[cfg(not(target_arch = "wasm32"))]
     crate::io::write_file(&path, &bytes).map_err(EngineError::Other)?;
-    Ok(json!({"path": path, "bytes": bytes.len(), "warnings": warnings}))
+    #[allow(unused_mut)]
+    let mut written = json!({"path": path, "bytes": bytes.len(), "warnings": warnings});
+    // The web build has no file system: the bytes go back to the caller, which writes them.
+    #[cfg(target_arch = "wasm32")]
+    {
+        written["base64"] = json!(super::bytes::base64_encode(&bytes));
+    }
+    Ok(written)
 }
 
 /// Which access a recovery command needs to the folder it is given.

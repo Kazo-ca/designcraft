@@ -11,6 +11,20 @@ pub(super) fn download_document(app: &mut DesignApp) -> Result<Value, String> {
     app.run("file.saveAs", json!({"path": name}))
 }
 
+/// File › Save a Copy… to `path`: the document stays as it is. The desktop engine writes the file
+/// itself; the web build has no file system, so the engine hands the bytes back and the platform
+/// writer takes them (a download, or the page hosting the app).
+pub(super) fn save_copy(app: &mut DesignApp, path: &str) -> Result<Value, String> {
+    let mut r = app.run("file.saveACopy", json!({"path": path}))?;
+    let Some(encoded) = r.as_object_mut().and_then(|o| o.remove("base64")) else { return Ok(r) };
+    let bytes = designcraft_engine::cmd::base64_decode(encoded.as_str().unwrap_or_default());
+    let written = r["path"].as_str().unwrap_or(path).to_string();
+    match app.services.write.as_mut() {
+        Some(w) => w(&written, &bytes).map(|_| r),
+        None => Err("no writer".into()),
+    }
+}
+
 /// Asks where to save `name`, then runs `export` with `p` and the chosen path.
 #[track_caller]
 fn ask_then_export(

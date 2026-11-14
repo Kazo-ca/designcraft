@@ -1,4 +1,4 @@
-use super::export::{download_document, export_bytes, export_epub, export_idml, export_pdf, export_png, separations_view};
+use super::export::{download_document, export_bytes, export_epub, export_idml, export_pdf, export_png, save_copy, separations_view};
 use super::invoke::guide_spread;
 use super::state::{is_window_control, menu_enabled, window_control_available};
 use super::tables::{CLASSIC_GROUPS, TYPOGRAPHY_GROUPS, workspace_open_panel};
@@ -225,11 +225,11 @@ fn run_ui_part1(app: &mut DesignApp, id: &str, p: &Value) -> Option<Result<Value
         "app.saveCopyDialog" => match p.get("path").and_then(Value::as_str) {
             Some(path) => {
                 let path = path.to_owned();
-                save_when_checked(app, move |app| app.run("file.saveACopy", json!({"path": path})))
+                save_when_checked(app, move |app| save_copy(app, &path))
             }
             None => {
                 let name = app.session.active().map(|d| format!("{} copy.designcraft", d.doc.title)).unwrap_or_default();
-                app.ask_save(&name, Bound::Document, |app, path| save_when_checked(app, move |app| app.run("file.saveACopy", json!({"path": path}))))
+                app.ask_save(&name, Bound::Document, |app, path| save_when_checked(app, move |app| save_copy(app, &path)))
             }
         },
         "app.exportPng" => export_png(app, p),
