@@ -56,6 +56,10 @@ pub fn start() {
         {
             create.instance_descriptor.backends = eframe::wgpu::Backends::GL;
         }
+        // Host mode (`craft-web-host`): a page that hosts DesignCraft sends files to open and keeps
+        // the document's saves (`host`). Not hosted, nothing changes.
+        // A start failure reaches the page through `graphics_failed`.
+        let app_bridge = crate::host::Bridge::detect(&canvas);
         let runner = eframe::WebRunner::new();
         let creator_graphics = graphics.clone();
         let result = runner
@@ -72,7 +76,11 @@ pub fn start() {
                         });
                     }
                     let inbox: Inbox = Inbox::default();
-                    let mut app = DesignApp::new(Session::new(), services(inbox.clone(), cc.egui_ctx.clone()));
+                    let mut services = services(inbox.clone(), cc.egui_ctx.clone());
+                    if let Some(bridge) = &app_bridge {
+                        bridge.connect(&mut services, cc.egui_ctx.clone());
+                    }
+                    let mut app = DesignApp::new(Session::new(), services);
                     // `?control`: `window.designcraft`, the page command API over the control channel.
                     if crate::api::wanted(&query()) {
                         app = crate::api::install(app, cc.egui_ctx.clone());
@@ -80,7 +88,10 @@ pub fn start() {
                     if has_query_flag(&query(), "sample") {
                         let _ = app.run("file.newSample", serde_json::json!({}));
                     }
-                    Ok(Box::new(WebShell { app, inbox, graphics: creator_graphics }))
+                    if let Some(bridge) = &app_bridge {
+                        bridge.post_ready();
+                    }
+                    Ok(Box::new(WebShell { app, inbox, graphics: creator_graphics, bridge: app_bridge }))
                 }),
             )
             .await;
@@ -164,6 +175,8 @@ fn graphics_failed(graphics: &GraphicsState, title: &str, message: &str, detail:
         return;
     }
     log::error!("designcraft-web: {detail}");
+    // A page that hosts the app learns it has stopped (H1); nothing of the app's is touched.
+    crate::host::post_failed(&format!("{title}: {detail}"));
     if let Err(e) = show_error(title, message, detail) {
         log::error!("couldn't show graphics error: {e:?}");
     }
@@ -349,12 +362,19 @@ struct WebShell {
     app: DesignApp,
     inbox: Inbox,
     graphics: GraphicsState,
+    /// Host mode's bridge, when a page hosts the app.
+    bridge: Option<crate::host::Bridge>,
 }
 
 impl eframe::App for WebShell {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let graphics = self.graphics.clone();
-        let _ = graphics.run_if_healthy(|| self.app.logic(ctx));
+        let _ = graphics.run_if_healthy(|| {
+            if let Some(bridge) = &self.bridge {
+                bridge.sync(&mut self.app);
+            }
+            self.app.logic(ctx)
+        });
     }
 
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {

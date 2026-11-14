@@ -74,7 +74,9 @@ use app::browser_import_tests;
 pub use app::opens_as_document;
 pub use clock::now_ms;
 pub use key_names::{drop_key_name_text, is_key_name};
-pub use services::{ClipboardFn, DownloadFn, Inbox, OpenAsyncFn, PointerFn, ReadFn, Services, WindowFrameFn, WriteFn};
+pub use services::{
+    ClipboardFn, DocumentWrite, DownloadFn, Inbox, OpenAsyncFn, PointerFn, ReadFn, Services, WindowFrameFn, WriteDocumentFn, WriteFn,
+};
 pub(crate) use state::second_window_viewport;
 pub use state::{CanvasCache, HiddenPanels, ImportRequest, ImportedFile, PdfExportSettings, Perf, SavedWorkspace, ScreenMode, Shown, UiState, View};
 
@@ -186,6 +188,8 @@ pub struct DesignApp {
     /// Story open in the Story Editor.
     pub story_editor: Option<story_editor::Target>,
     control_rx: Option<Receiver<ControlRequest>>,
+    /// Document saves handed to `Services::write_document`, waiting for the shell to confirm them.
+    hosted_saves: app::hosted::HostedSaves,
     pending_shots: Vec<ShotRequest>,
     queued_shots: Vec<(u64, f64, u32)>,
     shot_token: u64,
@@ -319,6 +323,9 @@ struct QuitState {
 pub fn cjk_features(app: &DesignApp) -> bool {
     app.session.prefs.cjk_features.unwrap_or_else(|| i18n::is_cjk(&app.ui.language))
 }
+
+#[cfg(test)]
+mod hosted_save_tests;
 
 #[cfg(test)]
 mod tests;

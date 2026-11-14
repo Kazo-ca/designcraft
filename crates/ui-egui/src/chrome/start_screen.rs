@@ -63,7 +63,10 @@ pub fn start_screen(app: &mut DesignApp, ui: &mut egui::Ui) {
                     }
                 });
                 ui.add_space(20.0);
-                community_card(app, ui);
+                // A page that hosts the app is not the ArtCraft project's own site.
+                if !app.services.hosted {
+                    community_card(app, ui);
+                }
                 recent_files(app, ui);
                 ui.add_space(24.0);
                 ui.label(crate::rtl::widget(

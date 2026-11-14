@@ -10,7 +10,9 @@
 //!   `docInspect`, `uiInspect`, `screenshot`), which drives the same control methods (`api`);
 //! - File → Open / Place use the browser file picker; bytes arrive asynchronously through
 //!   `Services::inbox` (`.designcraft` → `file.openBytes`, images → `file.place`);
-//! - Save and Export trigger a browser download;
+//! - Save and Export trigger a browser download, except in host mode (`?host=parent` in a
+//!   same-origin iframe, or `data-host="page"` on the canvas): the page sends the files to open
+//!   and keeps the document's saves (`craft-web-host`, `host`);
 //! - dropped files are read asynchronously by `web::WebShell` and delivered through the inbox.
 //!
 //! URL query flags: `?webgl` forces the WebGL2 backend instead of WebGPU; `?sample` opens the
@@ -23,6 +25,12 @@ mod api;
 
 #[cfg(any(target_arch = "wasm32", test))]
 mod browser_policy;
+
+#[cfg(target_arch = "wasm32")]
+mod host;
+
+#[cfg(any(target_arch = "wasm32", test))]
+mod hostmode;
 
 #[cfg(target_arch = "wasm32")]
 mod web;
