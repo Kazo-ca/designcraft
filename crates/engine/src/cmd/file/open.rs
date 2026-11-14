@@ -239,7 +239,10 @@ pub(super) fn file_open_bytes(s: &mut Session, p: &Value) -> Result<Value> {
         // Titled as an IDML file opened from bytes is: without its extension.
         d.title = without_native_extension(n).to_string();
     }
-    let mut st = DocState::new(d, None);
+    // The file these bytes are (a page that hosts the web build hands its file over by name):
+    // Save writes the document back there. A converted IDML or InDesign file returned above.
+    let path = str_param(p, "path").filter(|path| !path.is_empty()).map(str::to_string);
+    let mut st = DocState::new(d, path);
     let checks = crate::cmd::native_links::start(&mut st, links);
     let i = s.add_document(st);
     Ok(json!({"index": i, "warnings": warnings, "linkChecks": checks}))
@@ -613,6 +616,23 @@ mod open_bytes_tests {
     /// A `.designcraft` file opened from bytes under its file name (a browser or host passes the
     /// name it has) is titled without the extension, as an IDML file is, so saving it gives
     /// `Brochure.designcraft` and not `Brochure.designcraft.designcraft`.
+    #[test]
+    fn open_bytes_keeps_the_path_of_a_native_document_and_not_of_a_converted_one() {
+        let mut s = Session::new();
+        s.execute("file.new", &json!({})).unwrap();
+        let native = s.execute("file.serialize", &json!({})).unwrap();
+        let r = s
+            .execute("file.openBytes", &json!({"name": "Brochure.designcraft", "base64": native["base64"], "path": "Brochure.designcraft"}))
+            .unwrap();
+        let st = &s.documents()[r["index"].as_u64().unwrap() as usize];
+        assert_eq!((st.path.as_deref(), st.is_dirty()), (Some("Brochure.designcraft"), false));
+        let r = s.execute("file.openBytes", &json!({"name": "Brochure.designcraft", "base64": native["base64"]})).unwrap();
+        assert_eq!(s.documents()[r["index"].as_u64().unwrap() as usize].path, None, "no path given, none kept");
+        let idml = s.execute("file.exportIdml", &json!({})).unwrap();
+        let r = s.execute("file.openBytes", &json!({"name": "Brochure.idml", "base64": idml["base64"], "path": "Brochure.idml"})).unwrap();
+        assert_eq!(s.documents()[r["index"].as_u64().unwrap() as usize].path, None, "a converted IDML keeps no path");
+    }
+
     #[test]
     fn open_bytes_titles_a_native_document_without_its_extension() {
         let mut s = Session::new();

@@ -43,7 +43,7 @@ pub use tree::{
     AppMenuItem, MAC_APP_MENU, OPEN_RECENT, all_menu_items, has_shown_item, menu_key, menu_tree, native_label, native_menu_tree, recent_items,
     recent_label,
 };
-pub use ui_commands::{CJK_ONLY, UI_COMMANDS, shown, ui_label};
+pub use ui_commands::{CJK_ONLY, HOSTED_HIDDEN, UI_COMMANDS, shown, ui_label};
 
 /// A menu entry, shared by the in-window menu bar and the native macOS menu.
 #[derive(Clone, Debug)]

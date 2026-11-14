@@ -7,8 +7,12 @@ pub const CJK_ONLY: &[&str] = &["type.tateChuYoko", "app.rubyDialog", "type.kent
 /// Whether command `id` has a menu item or Quick Apply entry in the current interface (CJK-only
 /// ones need [`crate::cjk_features`]).
 pub fn shown(app: &DesignApp, id: &str) -> bool {
-    !CJK_ONLY.contains(&id) || crate::cjk_features(app)
+    (!CJK_ONLY.contains(&id) || crate::cjk_features(app)) && !(app.services.hosted && HOSTED_HIDDEN.contains(&id))
 }
+
+/// The Help menu's ArtCraft community and project links and the update check, which a page that
+/// hosts the app leaves out: it may run a modified build, and updates come from the page.
+pub const HOSTED_HIDDEN: &[&str] = &["help.discord", "help.appPage", "help.github", "help.issues", "help.website", "help.checkForUpdates"];
 
 /// UI commands: (id, label, shortcut, params).
 pub const UI_COMMANDS: &[(&str, &str, Option<&str>, &str)] = &[

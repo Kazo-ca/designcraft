@@ -60,6 +60,10 @@ pub(crate) fn save_when_checked(app: &mut DesignApp, save: impl FnOnce(&mut Desi
 /// `after` once it is written. A save dialog answers on a later frame; Cancel runs nothing.
 #[track_caller]
 pub(crate) fn save_then(app: &mut DesignApp, after: impl FnOnce(&mut DesignApp) -> Result<Value, String> + 'static) -> Result<Value, String> {
+    // A shell that keeps the document's file: `after` runs once it says the file was written.
+    if app.services.write_document.is_some() {
+        return app.hand_document(false, None, Some(Box::new(after)));
+    }
     if app.services.download.is_some() {
         download_document(app)?;
         return after(app);
@@ -194,6 +198,11 @@ fn run_ui_part1(app: &mut DesignApp, id: &str, p: &Value) -> Option<Result<Value
                 json!({"path": path, "styles": info["paragraph"], "charStyles": info["character"], "conflicts": info["conflicts"], "styleConflicts": "useExisting", "removeStyles": false, "map": {}}),
             ));
             Ok(Value::Null)
+        }
+        // A shell that keeps the document's file (a page hosting the web build): Save As asks it
+        // where, even under the same name.
+        "app.save" | "app.saveDialog" if app.services.write_document.is_some() => {
+            app.hand_document(id == "app.saveDialog", p.get("path").and_then(Value::as_str), None)
         }
         "app.save" | "app.saveDialog" if app.services.download.is_some() => download_document(app),
         "app.save" => {

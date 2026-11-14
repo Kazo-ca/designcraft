@@ -576,6 +576,24 @@ impl Session {
         self.staged_open = Some(read);
     }
 
+    /// A save written by the host somewhere else (a page that keeps the web build's document)
+    /// reached its file: the document `uid` counts as saved at `revision`, holding `doc`, under
+    /// `path`. Nothing changes when the document closed, was replaced since (`identity_epoch`,
+    /// File › Revert) or a newer save was confirmed already; returns whether it was marked. Edits
+    /// made after the write keep it modified (its document is a different allocation).
+    pub fn mark_saved(&mut self, uid: u64, identity_epoch: u64, doc: Arc<Document>, revision: u64, path: &str) -> bool {
+        let Some(st) = self.docs.iter_mut().find(|d| d.uid == uid && d.identity_epoch == identity_epoch) else {
+            return false;
+        };
+        if revision < st.saved_revision {
+            return false;
+        }
+        st.path = Some(path.to_string());
+        st.saved_revision = revision;
+        st.saved_doc = doc;
+        true
+    }
+
     pub fn set_active(&mut self, i: usize) {
         if i < self.docs.len() && self.active != Some(i) {
             // The composition belongs to the document it shows in.
