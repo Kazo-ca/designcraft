@@ -60,7 +60,7 @@ use designcraft_geom::{Point, Unit};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-pub use control::{ControlRequest, ControlResponse};
+pub use control::{ControlRequest, ControlResponse, Dispatch};
 pub use prefs::ReadPreferences;
 
 mod app;
@@ -122,6 +122,8 @@ struct PendingDrop {
 struct ShotRequest {
     token: u64,
     path: Option<String>,
+    /// With no `path`, reply with the PNG itself (`png`, base64).
+    data: bool,
     reply: Sender<ControlResponse>,
     deadline: f64,
     viewport: egui::ViewportId,

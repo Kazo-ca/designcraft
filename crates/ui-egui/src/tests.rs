@@ -1384,7 +1384,14 @@ fn control_screenshot_replies_with_the_saved_capture() {
     let (requests, receiver) = std::sync::mpsc::channel();
     app = app.with_control(receiver);
     let (reply, replies) = std::sync::mpsc::channel();
-    requests.send(ControlRequest { method: "ui.screenshot".into(), params: json!({"path": "control.png", "focus": false}), reply }).unwrap();
+    requests
+        .send(ControlRequest {
+            method: "ui.screenshot".into(),
+            params: json!({"path": "control.png", "focus": false}),
+            reply,
+            dispatch: Default::default(),
+        })
+        .unwrap();
     shot_frame(&mut app, &ctx, egui::vec2(640.0, 480.0));
     assert_eq!(app.pending_shots.len(), 1, "ui.screenshot is admitted, not issued from the queue");
     assert!(replies.try_recv().is_err(), "the reply waits for the capture");
@@ -1410,6 +1417,54 @@ fn control_screenshot_replies_with_the_saved_capture() {
     assert!(app.queued_shots.is_empty());
 }
 
+/// `ui.screenshot {data: true}` without a path replies with the PNG itself and writes nothing:
+/// the page command API (`window.designcraft.screenshot()`) can't read a file the app writes.
+#[test]
+fn control_screenshot_with_data_replies_with_the_png() {
+    let (mut app, ctx, writes) = screenshot_app();
+    let (requests, receiver) = std::sync::mpsc::channel();
+    app = app.with_control(receiver);
+    let (request, replies) = ControlRequest::new("ui.screenshot", json!({"data": true, "focus": false}));
+    requests.send(request).unwrap();
+    shot_frame(&mut app, &ctx, egui::vec2(64.0, 48.0));
+    app.queued_shots[0].1 = 0.0;
+    let mut callback = None;
+    for _ in 0..3 {
+        if let Some(cb) = screenshot_callback(&mut shot_frame(&mut app, &ctx, egui::vec2(64.0, 48.0))) {
+            callback = Some(cb);
+        }
+    }
+    callback.expect("a capture").complete(std::sync::Arc::new(egui::ColorImage::filled([64, 48], egui::Color32::BLACK)));
+    shot_frame(&mut app, &ctx, egui::vec2(64.0, 48.0));
+    let reply = replies.recv().unwrap();
+    assert_eq!((reply["ok"].as_bool(), reply["result"]["width"].as_u64()), (Some(true), Some(64)), "{reply}");
+    let png = designcraft_engine::cmd::base64_decode(reply["result"]["png"].as_str().unwrap());
+    assert!(png.starts_with(b"\x89PNG"), "a PNG");
+    assert!(writes.lock().unwrap().is_empty(), "no file written");
+}
+
+/// A control request its caller stopped waiting for (a page's call timed out) is not run when the
+/// app reaches it, and says so; one already running reports that it may still apply.
+#[test]
+fn a_control_request_given_up_before_it_runs_is_skipped() {
+    let ctx = egui::Context::default();
+    let (requests, receiver) = std::sync::mpsc::channel();
+    let mut app = DesignApp::new(Session::new(), Services::default()).with_control(receiver);
+    let (request, replies) = ControlRequest::new("engine.execute", json!({"command": "file.new", "params": {}}));
+    let dispatch = request.dispatch.clone();
+    requests.send(request).unwrap();
+    assert!(dispatch.give_up().starts_with("timeout: not run"));
+    app.drain_control(&ctx);
+    assert!(app.session.documents().is_empty(), "file.new did not run");
+    assert_eq!(replies.recv().unwrap()["error"], crate::control::NOT_RUN);
+    let (request, replies) = ControlRequest::new("engine.execute", json!({"command": "file.new", "params": {}}));
+    let dispatch = request.dispatch.clone();
+    requests.send(request).unwrap();
+    app.drain_control(&ctx);
+    assert_eq!((app.session.documents().len(), replies.recv().unwrap()["ok"].as_bool()), (1, Some(true)));
+    assert_eq!(dispatch.give_up(), crate::control::MAY_STILL_APPLY, "it ran");
+}
+
 /// A timed-out capture replies with a no-frame error and writes no file.
 #[test]
 fn control_screenshot_times_out_without_writing_a_file() {
@@ -1417,7 +1472,14 @@ fn control_screenshot_times_out_without_writing_a_file() {
     let (requests, receiver) = std::sync::mpsc::channel();
     app = app.with_control(receiver);
     let (reply, replies) = std::sync::mpsc::channel();
-    requests.send(ControlRequest { method: "ui.screenshot".into(), params: json!({"path": "control.png", "focus": false}), reply }).unwrap();
+    requests
+        .send(ControlRequest {
+            method: "ui.screenshot".into(),
+            params: json!({"path": "control.png", "focus": false}),
+            reply,
+            dispatch: Default::default(),
+        })
+        .unwrap();
     shot_frame(&mut app, &ctx, egui::vec2(640.0, 480.0));
     assert_eq!(app.pending_shots.len(), 1);
     app.pending_shots[0].deadline = 0.0;
@@ -2023,7 +2085,12 @@ fn design_generation_screenshot_switch_before_issue_does_not_capture_the_new_doc
     app = app.with_control(receiver);
     let (reply, replies) = std::sync::mpsc::channel();
     requests
-        .send(ControlRequest { method: "ui.screenshot".into(), params: json!({"path": "switch-before-issue.png", "focus": false}), reply })
+        .send(ControlRequest {
+            method: "ui.screenshot".into(),
+            params: json!({"path": "switch-before-issue.png", "focus": false}),
+            reply,
+            dispatch: Default::default(),
+        })
         .unwrap();
     shot_frame(&mut app, &ctx, egui::vec2(640.0, 480.0));
     assert_eq!(app.pending_shots.len(), 1, "ui.screenshot is admitted");

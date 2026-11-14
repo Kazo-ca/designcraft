@@ -48,10 +48,22 @@ so only enable it while you use it. Transport: `apps/designcraft/src/control_ser
 | `ui.dialog.open` | `{id, fields?}` | Open a dialog by id (e.g. `paragraphStyleOptions` or `characterStyleOptions` with `{name, section}`, or `{new: true}` for a new style) |
 | `ui.dialog.set` / `ui.dialog.confirm` / `ui.dialog.cancel` | `{field, value}` | Fill and confirm the open dialog |
 | `ui.resize`, `ui.focus` | | Window control |
-| `ui.screenshot` | `{path?}` | PNG of the whole window |
+| `ui.screenshot` | `{path?, data?}` | PNG of the whole window, written to `path`; with no `path` and `data: true`, the reply carries it as base64 (`png`) |
 | `ui.render` | `{path?, page?, scale?, bleed?}` | Render a document page headlessly (PNG; base64 if no path); without a canvas, document mode defaults to page 0; parent editing mode requires an explicit 0-based `page` |
 | `app.open` / `app.save` / `app.export` | | Files |
 | `app.quit` | | Quit without asking about unsaved changes (the `app.quit` command, like ⌘Q, asks) |
+
+`engine.execute {command: "document.list"}` lists the open documents as `{index, uid, title, path, dirty, active}`:
+`uid` names a document while it is open (an `index` changes when a tab before it closes), `path` is its file (null
+before its first save).
+
+A transport that stops waiting for a reply (`ControlRequest::dispatch`, `Dispatch::give_up`) gets the request skipped when
+the app has not taken it yet: the app answers `timeout: not run …` and runs nothing, so the request is safe to send again.
+
+**In the browser**, there is no TCP server: with `?control` in the page URL the web build installs `window.designcraft`
+(`craft-web-api`: `request(method, params)`, `execute`, `commands`, `docInspect`, `uiInspect`, `screenshot`), which sends
+these same methods to the app and resolves with the reply's `result` (or rejects with its `error`). A call the page gives
+up on (its timeout) is not run later. Transport: `apps/designcraft-web/src/api.rs`.
 
 Data merge runs through `engine.execute` like any command: `data.source.select`, `data.fields`, `data.placeholder.add` /
 `.remove`, `data.options`, `data.preview` / `data.preview.stop`, `data.merge`. `data.merge` creates and activates a new
