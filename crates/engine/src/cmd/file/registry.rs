@@ -51,8 +51,8 @@ pub fn specs() -> Vec<CommandSpec> {
             ok()
         }),
         cmd!(noundo "file.save", "Save", ["File"], Some("Cmd+S"), "{path?} — a `path` without the .designcraft extension gets it → {path: the file written, bytes}", has_doc, file_save),
-        cmd!(noundo "file.saveAs", "Save As…", ["File"], Some("Cmd+Shift+S"), "{path} — a path without the .designcraft extension gets it → {path: the file written, bytes}", has_doc, file_save),
-        cmd!(noundo "file.saveACopy", "Save a Copy…", ["File"], None, "{path} — writes the document without changing which file it is or its unsaved state; a path without the .designcraft extension gets it → {path: the file written, bytes}", has_doc, |s, p| {
+        cmd!(noundo "file.saveAs", "Save As…", ["File"], Some("Cmd+Shift+S"), "{path} — a path without the .designcraft extension gets it → {path: the file written, bytes} (web build: also {base64}, the bytes to write, since it has no file system)", has_doc, file_save),
+        cmd!(noundo "file.saveACopy", "Save a Copy…", ["File"], None, "{path} — writes the document without changing which file it is or its unsaved state; a path without the .designcraft extension gets it → {path: the file written, bytes} (web build: also {base64}, the bytes to write, since it has no file system)", has_doc, |s, p| {
             let path = str_param(p, "path").ok_or_else(|| bad("file.saveACopy", "missing `path`"))?;
             let path = with_document_extension(path);
             let mut copy = (*s.doc()?.doc).clone();
@@ -60,7 +60,14 @@ pub fn specs() -> Vec<CommandSpec> {
             let bytes = to_bytes_with_preview(&copy, &s.cache)?;
             #[cfg(not(target_arch = "wasm32"))]
             crate::io::write_file(&path, &bytes).map_err(EngineError::Other)?;
-            Ok(json!({"path": path, "bytes": bytes.len()}))
+            #[allow(unused_mut)]
+            let mut written = json!({"path": path, "bytes": bytes.len()});
+            // The web build has no file system: the bytes go back to the caller, which writes them.
+            #[cfg(target_arch = "wasm32")]
+            {
+                written["base64"] = json!(base64_encode(&bytes));
+            }
+            Ok(written)
         }),
         cmd!(noundo "file.revert", "Revert", ["File"], None, "{} — back to the last saved version (not undoable)", can_revert, file_revert),
         cmd!(query "file.recovery.list", "Recovery Data", [], None, "{dir?} → [{uid, path, title, saved}] unsaved documents left by a crash (default: the session's recovery folder)", always, |s, p| {
