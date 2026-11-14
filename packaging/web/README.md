@@ -83,6 +83,7 @@ DesignCraft renders with wgpu. It uses **WebGPU** when the browser has it and fa
 | *(none)* | WebGPU if available, otherwise WebGL2 |
 | `?webgl` | Force the WebGL2 backend (useful when a WebGPU driver misbehaves) |
 | `?cpu` | Force the CPU canvas path (slowest, most compatible) |
+| `?control` | Install `window.designcraft`, the page command API (`docs/control-protocol.md`) |
 
 For example: `<iframe src="https://example.com/designcraft/?webgl" ...>`.
 
