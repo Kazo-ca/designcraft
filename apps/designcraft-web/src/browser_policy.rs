@@ -1,10 +1,50 @@
-//! Browser startup, download metadata, and atomic import policies.
+//! Browser startup, file picker, download metadata, and atomic import policies.
 
 /// Query flags are case-sensitive decoded keys. Values are ignored: `?sample=false`
 /// still enables sample startup, and repeated keys have the same presence semantics.
 pub(crate) fn has_query_flag(query: &str, flag: &str) -> bool {
     let query = query.strip_prefix('?').unwrap_or(query);
     form_urlencoded::parse(query.as_bytes()).any(|(key, _)| key == flag)
+}
+
+/// The documents File › Open opens: DesignCraft's own, IDML and InDesign files (converted).
+const DOC_EXTS: &[&str] = &["designcraft", "idml", "indd", "indt"];
+/// The documents Load Styles reads styles from (`style.load` reads these two only).
+const STYLE_SOURCE_EXTS: &[&str] = &["designcraft", "idml"];
+/// The files File › Place puts on a spread.
+const IMAGE_EXTS: &[&str] = &[
+    "png",
+    "jpg",
+    "jpeg",
+    "gif",
+    "webp",
+    "tif",
+    "tiff",
+    "bmp",
+    "psd",
+    "svg",
+    "pdf",
+    "ai",
+    "txt",
+    "docx",
+    "rtf",
+    "md",
+    "xlsx",
+    "idml",
+    "designcraft",
+];
+
+/// The browser file picker's filter for an import `purpose` (`ImportRequest::purpose`): its label
+/// and extensions. Each purpose that reads a different kind of file has its own list, so a page
+/// hosting the app (which sees only the picker's `accept`) can tell File › Open from Load Styles.
+pub(crate) fn picker_filter(purpose: &str) -> (&'static str, &'static [&'static str]) {
+    match purpose {
+        "swatches" => ("Swatch Exchange (ASE)", &["ase"]),
+        "shortcuts" => ("Shortcut set (JSON, InDesign text)", &["json", "txt"]),
+        "place" => ("Graphics", IMAGE_EXTS),
+        styles if styles.starts_with("styles") => ("DesignCraft or IDML document", STYLE_SOURCE_EXTS),
+        _ => ("DesignCraft, IDML or InDesign", DOC_EXTS),
+    }
 }
 
 pub(crate) fn mime_for(name: &str) -> &'static str {
@@ -20,7 +60,20 @@ pub(crate) fn mime_for(name: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{has_query_flag, mime_for};
+    use super::{has_query_flag, mime_for, picker_filter};
+
+    #[test]
+    fn open_and_load_styles_pickers_accept_different_files() {
+        let (_, open) = picker_filter("open");
+        assert_eq!(open, &["designcraft", "idml", "indd", "indt"]);
+        for styles in ["styles", "styles:paragraph", "styles:character"] {
+            let (_, accepted) = picker_filter(styles);
+            assert_eq!(accepted, &["designcraft", "idml"], "{styles}: style.load reads these only");
+            assert_ne!(accepted, open, "{styles}: a hosting page tells the two apart by `accept`");
+        }
+        assert_eq!(picker_filter("swatches").1, &["ase"]);
+        assert!(picker_filter("place").1.contains(&"png"));
+    }
 
     #[test]
     fn startup_flags_match_complete_decoded_keys() {

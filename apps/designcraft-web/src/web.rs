@@ -1,33 +1,11 @@
 //! The browser shell: web `Services`, drag-and-drop, and the eframe web runner.
 
-use super::browser_policy::{has_query_flag, mime_for};
+use super::browser_policy::{has_query_flag, mime_for, picker_filter};
 use crate::graphics::{GraphicsState, RecoveryDocument, recovery_documents};
 use designcraft_engine::Session;
 use designcraft_ui_egui::{DesignApp, ImportRequest, ImportedFile, Inbox, Services};
 use wasm_bindgen::JsCast as _;
 
-const DOC_EXTS: &[&str] = &["designcraft", "idml", "indd", "indt"];
-const IMAGE_EXTS: &[&str] = &[
-    "png",
-    "jpg",
-    "jpeg",
-    "gif",
-    "webp",
-    "tif",
-    "tiff",
-    "bmp",
-    "psd",
-    "svg",
-    "pdf",
-    "ai",
-    "txt",
-    "docx",
-    "rtf",
-    "md",
-    "xlsx",
-    "idml",
-    "designcraft",
-];
 const CANVAS_ID: &str = "designcraft_canvas";
 const LOADING_ID: &str = "designcraft_loading";
 
@@ -438,15 +416,8 @@ fn services(inbox: Inbox, ctx: egui::Context) -> Services {
         open_async: Some(Box::new(move |request: ImportRequest| {
             let inbox = open_inbox.clone();
             let ctx = ctx.clone();
-            let dialog = if request.purpose == "swatches" {
-                rfd::AsyncFileDialog::new().add_filter("Swatch Exchange (ASE)", &["ase"])
-            } else if request.purpose == "shortcuts" {
-                rfd::AsyncFileDialog::new().add_filter("Shortcut set (JSON, InDesign text)", &["json", "txt"])
-            } else if request.purpose == "place" {
-                rfd::AsyncFileDialog::new().add_filter("Graphics", IMAGE_EXTS)
-            } else {
-                rfd::AsyncFileDialog::new().add_filter("DesignCraft, IDML or InDesign", DOC_EXTS)
-            };
+            let (label, extensions) = picker_filter(&request.purpose);
+            let dialog = rfd::AsyncFileDialog::new().add_filter(label, extensions);
             wasm_bindgen_futures::spawn_local(async move {
                 // Place takes several files, loaded into the place cursor in the order chosen.
                 let handles = if request.purpose == "place" {
