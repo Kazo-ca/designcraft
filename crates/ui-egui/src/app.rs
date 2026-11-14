@@ -16,6 +16,7 @@ mod control;
 pub(crate) mod file_dialogs;
 mod files;
 mod frame;
+pub(crate) mod hosted;
 mod ime;
 mod input;
 mod keys;
@@ -72,6 +73,7 @@ impl DesignApp {
             clipboard_guard_installed: false,
             story_editor: None,
             control_rx: None,
+            hosted_saves: Default::default(),
             pending_shots: vec![],
             queued_shots: vec![],
             shot_token: 0,
