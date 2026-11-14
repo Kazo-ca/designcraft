@@ -11,14 +11,15 @@ pub fn specs() -> Vec<CommandSpec> {
         cmd!(query "document.inspect", "Inspect Document", [], None, "{} → pages, spreads, items, stories (with overset), styles, swatches, selection", has_doc, inspect),
         cmd!(query "app.links", "Community & Project Links", [], None,
             "{} → {discord, website, appPage, github, issues} (ArtCraft Discord, website, DesignCraft page and repository)", always, |_, _| Ok(crate::links::all())),
-        cmd!(query "document.list", "List Documents", [], None, "{}", always, |s, _| {
+        cmd!(query "document.list", "List Documents", [], None,
+            "{} → [{index, uid, title, path, dirty, active}]: `uid` names a document while it is open (an `index` changes when a tab before it closes); `path` is its file, null before its first save", always, |s, _| {
             let preview = s.new_document_preview();
             Ok(json!(s
                 .documents()
                 .iter()
                 .enumerate()
                 .map(|(i, d)| {
-                    let mut v = json!({"index": i, "title": d.title(), "dirty": d.is_dirty(), "active": Some(i) == s.active_index()});
+                    let mut v = json!({"index": i, "uid": d.uid, "title": d.title(), "path": d.path, "dirty": d.is_dirty(), "active": Some(i) == s.active_index()});
                     // New Document's preview, not a document yet.
                     if preview == Some(d.uid) {
                         v["preview"] = json!(true);
@@ -121,4 +122,27 @@ fn inspect(s: &mut Session, _p: &Value) -> Result<Value> {
         "tool": s.tool_id(),
         "canUndo": !st.history.undo.is_empty(),
     }))
+}
+
+#[cfg(test)]
+mod document_list_tests {
+    use serde_json::json;
+
+    use crate::Session;
+
+    #[test]
+    fn documents_are_listed_with_a_uid_that_outlives_their_index_and_their_path() {
+        let mut s = Session::new();
+        s.execute("file.new", &json!({})).unwrap();
+        s.execute("file.new", &json!({})).unwrap();
+        let listed = s.execute("document.list", &json!({})).unwrap();
+        let second = listed[1]["uid"].as_u64().unwrap();
+        assert_ne!(listed[0]["uid"], listed[1]["uid"]);
+        assert_eq!((&listed[0]["path"], &listed[1]["active"]), (&json!(null), &json!(true)), "never saved: no path");
+        s.doc_mut().unwrap().path = Some("Brochure.designcraft".into());
+        s.execute("file.close", &json!({"index": 0})).unwrap();
+        let listed = s.execute("document.list", &json!({})).unwrap();
+        assert_eq!((listed[0]["index"].as_u64(), listed[0]["uid"].as_u64()), (Some(0), Some(second)), "its index moved, its uid didn't");
+        assert_eq!(listed[0]["path"], "Brochure.designcraft");
+    }
 }

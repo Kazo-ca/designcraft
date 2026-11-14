@@ -14,11 +14,23 @@ impl DesignApp {
         }
     }
 
-    /// Admit one `ui.screenshot` request against the app's count and byte budgets.
+    /// [`Self::admit_screenshot_with`] for a request that writes to `path` (or replies with the size).
+    #[cfg(test)]
+    pub(crate) fn admit_screenshot(&mut self, path: Option<String>, reply: Sender<ControlResponse>) -> Result<u64, serde_json::Value> {
+        self.admit_screenshot_with(path, false, reply)
+    }
+
+    /// Admit one `ui.screenshot` request against the app's count and byte budgets. `data`: with no
+    /// `path`, the reply carries the PNG.
     ///
     /// Admission happens before any capture is issued: the checked, current viewport dimensions
     /// reserve their RGBA bytes, and queued plus completed images are counted together.
-    pub(crate) fn admit_screenshot(&mut self, path: Option<String>, reply: Sender<ControlResponse>) -> Result<u64, serde_json::Value> {
+    pub(crate) fn admit_screenshot_with(
+        &mut self,
+        path: Option<String>,
+        data: bool,
+        reply: Sender<ControlResponse>,
+    ) -> Result<u64, serde_json::Value> {
         let Some(mut geometry) = self.screenshot_geometry else {
             return Err(json!({"ok": false, "error": "the window geometry is not known yet"}));
         };
@@ -54,6 +66,7 @@ impl DesignApp {
         self.pending_shots.push(ShotRequest {
             token,
             path,
+            data,
             reply,
             deadline: now + 8000.0,
             viewport: egui::ViewportId::ROOT,
@@ -205,7 +218,7 @@ impl DesignApp {
                 let shot = self.pending_shots.remove(i);
                 self.queued_shots.retain(|(token, ..)| *token != shot.token);
                 let value = match result {
-                    Ok(image) => crate::control::save_screenshot(self, image.as_ref(), shot.path.as_deref()),
+                    Ok(image) => crate::control::save_screenshot(self, image.as_ref(), shot.path.as_deref(), shot.data),
                     Err(e) => json!({"ok": false, "error": e.to_string()}),
                 };
                 let _ = shot.reply.send(value);

@@ -42,6 +42,8 @@ craft-keymap = { git = "https://github.com/storytold/craft-libs", rev = "33be356
 craft-prepress = { git = "https://github.com/storytold/craft-libs", rev = "33be35625e252cc4f06aa375b3b428521faea37d", version = "=0.1.0", features = ["flatten"] }
 # craft-update: app-specific pretend versions apply to startup and manual checks.
 craft-update = { git = "https://github.com/storytold/craft-libs", version = "=0.1.0", rev = "33be35625e252cc4f06aa375b3b428521faea37d", features = ["egui"] }
+# The web build's page command API (`window.designcraft`), same revision as craft-update.
+craft-web-api = { git = "https://github.com/storytold/craft-libs", version = "=0.1.0", rev = "33be35625e252cc4f06aa375b3b428521faea37d" }
 # internal
 designcraft-geom = { path = "crates/geom" }
 designcraft-color = { path = "crates/color" }

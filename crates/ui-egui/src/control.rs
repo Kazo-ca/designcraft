@@ -36,18 +36,62 @@ pub struct ControlRequest {
     pub method: String,
     pub params: Value,
     pub reply: Sender<ControlResponse>,
+    /// Shared with the transport, so that a request it stopped waiting for is not run later.
+    pub dispatch: Dispatch,
 }
 
 impl ControlRequest {
     pub fn new(method: impl Into<String>, params: Value) -> (Self, std::sync::mpsc::Receiver<ControlResponse>) {
         let (tx, rx) = std::sync::mpsc::channel();
-        (Self { method: method.into(), params, reply: tx }, rx)
+        (Self { method: method.into(), params, reply: tx, dispatch: Dispatch::default() }, rx)
+    }
+}
+
+/// The error for a request the transport gave up on before the app took it: it never ran, so
+/// sending it again is safe. Machines match the `timeout: not run` prefix.
+pub const NOT_RUN: &str =
+    "timeout: not run — the caller stopped waiting before the app took the request, so it was dropped and is safe to send again";
+
+/// The error for a request the transport gave up on after the app took it: it may still apply.
+pub const MAY_STILL_APPLY: &str = "timeout: no reply in time — the request was already running and may still apply";
+
+/// Whether a request was run, settled once between the app (about to run it) and the transport
+/// (giving up on its reply, such as a page whose call timed out). Without it a request the caller
+/// was told had failed could still run on a later frame.
+#[derive(Clone, Debug, Default)]
+pub struct Dispatch(std::sync::Arc<std::sync::atomic::AtomicU8>);
+
+const QUEUED: u8 = 0;
+const DISPATCHED: u8 = 1;
+const ABANDONED: u8 = 2;
+
+impl Dispatch {
+    /// The app claims the request to run it: false once the transport gave up on it.
+    pub(crate) fn start(&self) -> bool {
+        self.settle(DISPATCHED) == DISPATCHED
+    }
+
+    /// The transport stops waiting: [`NOT_RUN`] when the request can no longer run, and
+    /// [`MAY_STILL_APPLY`] when the app had already taken it.
+    pub fn give_up(&self) -> &'static str {
+        if self.settle(ABANDONED) == DISPATCHED { MAY_STILL_APPLY } else { NOT_RUN }
+    }
+
+    /// Moves a queued request to `to`; returns the state it ends in.
+    fn settle(&self, to: u8) -> u8 {
+        use std::sync::atomic::Ordering;
+        self.0.compare_exchange(QUEUED, to, Ordering::AcqRel, Ordering::Acquire).map_or_else(|state| state, |_| to)
     }
 }
 
 pub enum Outcome {
     Done(Value),
-    Screenshot { path: Option<String> },
+    /// `data`: with no `path`, the reply carries the PNG (`png`, base64), for a caller that can't
+    /// read a file the app writes (a page).
+    Screenshot {
+        path: Option<String>,
+        data: bool,
+    },
 }
 
 fn ok(v: Value) -> Outcome {
@@ -446,7 +490,7 @@ fn handle_request(app: &mut DesignApp, ctx: &egui::Context, req: &ControlRequest
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
             }
             ctx.request_repaint();
-            Outcome::Screenshot { path: s("path").map(str::to_string) }
+            Outcome::Screenshot { path: s("path").map(str::to_string), data: p.get("data").and_then(Value::as_bool).unwrap_or(false) }
         }
         "ui.render" => {
             let Some(st) = app.session.active() else { return err("no document") };
@@ -492,14 +536,17 @@ fn handle_request(app: &mut DesignApp, ctx: &egui::Context, req: &ControlRequest
     }
 }
 
-pub fn save_screenshot(app: &mut DesignApp, image: &egui::ColorImage, path: Option<&str>) -> Value {
+pub fn save_screenshot(app: &mut DesignApp, image: &egui::ColorImage, path: Option<&str>, data: bool) -> Value {
     let [w, h] = image.size;
-    let Some(path) = path else {
+    if path.is_none() && !data {
         return json!({"ok": true, "result": {"width": w, "height": h}});
-    };
+    }
     let rgba: Vec<u8> = image.pixels.iter().flat_map(|c| c.to_array()).collect();
     let img = designcraft_render::Rendered { width: w as u32, height: h as u32, pixels: rgba };
     let png = img.to_png();
+    let Some(path) = path else {
+        return json!({"ok": true, "result": {"width": w, "height": h, "png": designcraft_engine::cmd::base64_encode(&png)}});
+    };
     match app.services.write.as_mut() {
         Some(wr) => match wr(path, &png) {
             Ok(()) => json!({"ok": true, "result": {"path": path, "width": w, "height": h}}),
