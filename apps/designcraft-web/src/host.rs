@@ -123,6 +123,13 @@ impl Bridge {
                     }
                 },
                 Message::Saved { id } => q.saved.push(id),
+                // DesignCraft attaches no PDF page from the page: say so instead of dropping it.
+                Message::AttachPdf { name, .. } => {
+                    let e = format!("{name}: DesignCraft does not attach a PDF page from the page");
+                    log::warn!("{e}");
+                    let _ = host.post_failed(&e, None);
+                    return;
+                }
                 Message::Host { .. } | Message::HandoffDone { .. } => return,
             }
             ctx.request_repaint();
